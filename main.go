@@ -31,12 +31,12 @@ type Order struct {
 	DeliveryTime    string             `json:"deliveryTime"`
 	Status          string             `json:"status"`
 	UserID          primitive.ObjectID `bson:"userId" json:"userId"`
+
 	UserName        string             `json:"userName,omitempty"`
 	CourierEmail    string             `json:"courierEmail,omitempty" bson:"courierEmail,omitempty"`
 	CourierPhone    string             `json:"courierPhone,omitempty" bson:"courierPhone,omitempty"`
 	CourierName     string             `json:"courierName,omitempty" bson:"courierName,omitempty"`
 }
-
 type Courier struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty"`
 	Name        string             `json:"name" bson:"name"`
@@ -52,6 +52,7 @@ type Admin struct {
 	Email    string             `json:"email" bson:"email"`
 	Password string             `json:"password" bson:"password"`
 	Role     string             `json:"role" bson:"role"`
+
 }
 
 var client *mongo.Client
@@ -235,6 +236,8 @@ func CreateOrder(w http.ResponseWriter, r *http.Request) {
 
 func GetOrders(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.Header.Get("userId")
+
+
 	if userIDStr == "" {
 		http.Error(w, "UserID is required", http.StatusBadRequest)
 		return
@@ -792,4 +795,57 @@ func GetOrdersAssignedToCourier(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(orders)
+}
+func GetOrderDetails(w http.ResponseWriter, r *http.Request) {
+
+	orderIDStr := mux.Vars(r)["id"]
+	orderID, err := primitive.ObjectIDFromHex(orderIDStr)
+	if err != nil {
+		http.Error(w, "Invalid OrderID format", http.StatusBadRequest)
+		return
+	}
+
+	collection := client.Database("myapp").Collection("orders")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Retrieve the order details
+	var order Order
+	err = collection.FindOne(ctx, bson.M{"_id": orderID}).Decode(&order)
+	if err != nil {
+		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(order)
+}
+
+func CancelOrder(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+	orderIDStr, exists := vars["id"]
+	if !exists {
+		http.Error(w, "OrderID is required", http.StatusBadRequest)
+		return
+	}
+
+	orderID, err := primitive.ObjectIDFromHex(orderIDStr)
+	if err != nil {
+		http.Error(w, "Invalid OrderID format", http.StatusBadRequest)
+		return
+	}
+
+	collection := client.Database("myapp").Collection("orders")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	deleteResult, err := collection.DeleteOne(ctx, bson.M{"_id": orderID})
+	if err != nil || deleteResult.DeletedCount == 0 {
+		http.Error(w, "Order not found or could not be deleted", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Order canceled successfully")
 }
