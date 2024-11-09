@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -32,7 +31,7 @@ type Order struct {
 	DeliveryTime    string             `json:"deliveryTime,omitempty"`
 	Status          string             `json:"status"`
 	UserID          primitive.ObjectID `bson:"userId" json:"userId"`
-	UserName        string             `json:"userName,omitempty "`
+	UserName        string             `json:"userName,omitempty " bson:"userName,omitempty "`
 	CourierEmail    string             `json:"courierEmail,omitempty" bson:"courierEmail,omitempty"`
 	CourierPhone    string             `json:"courierPhone,omitempty" bson:"courierPhone,omitempty"`
 	CourierName     string             `json:"courierName,omitempty" bson:"courierName,omitempty"`
@@ -150,7 +149,7 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 func GetUsers(w http.ResponseWriter, r *http.Request) {
 	collection := client.Database("myapp").Collection("users")
 
-	cursor, err := collection.Find(context.TODO(), bson.D{}) 
+	cursor, err := collection.Find(context.TODO(), bson.D{})
 	if err != nil {
 		http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
 		return
@@ -264,27 +263,17 @@ func GetOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	userCollection := client.Database("myapp").Collection("users")
 	var user User
 	err = userCollection.FindOne(context.TODO(), bson.M{"_id": userID}).Decode(&user)
 	if err != nil {
 		http.Error(w, "User not found", http.StatusNotFound)
-		fmt.Println("Error finding user:", err)
 		return
 	}
 
-
-	if user.Name == "" {
-		fmt.Println("User Name is empty in the database.")
-	}
-
 	for i := range orders {
-		fmt.Println("Setting userName for order", orders[i].ID, "to", user.Name)
-		orders[i].UserName = user.Name 
+		orders[i].UserName = user.Name
 	}
-
-	fmt.Println("Orders before response:", orders)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(orders)
@@ -426,7 +415,7 @@ func LoginCourier(w http.ResponseWriter, r *http.Request) {
 	response := map[string]string{
 		"message":  "Login successful!",
 		"username": existingCourier.Name,
-		"email":    existingCourier.Email, 
+		"email":    existingCourier.Email,
 	}
 	json.NewEncoder(w).Encode(response)
 }
@@ -760,7 +749,6 @@ func DeleteOrder(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode("Order deleted successfully")
 }
-
 func AssignCourierToOrder(w http.ResponseWriter, r *http.Request) {
 	orderIDStr := mux.Vars(r)["orderId"]
 	orderID, err := primitive.ObjectIDFromHex(orderIDStr)
@@ -804,7 +792,7 @@ func AssignCourierToOrder(w http.ResponseWriter, r *http.Request) {
 		"$set": bson.M{
 			"courierId":    courier.ID,
 			"courierEmail": courier.Email,
-			"status":       "Pending Acceptance", 
+			"status":       "Pending Acceptance",
 		},
 	}
 
@@ -822,7 +810,6 @@ func ReassignCourierToOrder(w http.ResponseWriter, r *http.Request) {
 	orderIDStr := mux.Vars(r)["orderId"]
 	orderID, err := primitive.ObjectIDFromHex(orderIDStr)
 	if err != nil {
-		log.Printf("Invalid OrderID format: %v", err) 
 		http.Error(w, "Invalid OrderID format", http.StatusBadRequest)
 		return
 	}
@@ -832,7 +819,6 @@ func ReassignCourierToOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		log.Printf("Failed to decode request: %v", err)
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
 	}
@@ -841,7 +827,6 @@ func ReassignCourierToOrder(w http.ResponseWriter, r *http.Request) {
 	courierCollection := client.Database("myapp").Collection("couriers")
 	err = courierCollection.FindOne(context.TODO(), bson.M{"email": request.Email}).Decode(&courier)
 	if err != nil {
-		log.Printf("Courier not found: %v", err) // Log courier not found
 		http.Error(w, "Courier not found", http.StatusNotFound)
 		return
 	}
@@ -850,19 +835,16 @@ func ReassignCourierToOrder(w http.ResponseWriter, r *http.Request) {
 	var order Order
 	err = orderCollection.FindOne(context.TODO(), bson.M{"_id": orderID}).Decode(&order)
 	if err != nil {
-		log.Printf("Order not found: %v", err) // Log order fetch error
 		http.Error(w, "Order not found", http.StatusNotFound)
 		return
 	}
 
 	if order.CourierEmail == "" {
-		log.Println("Order has not been previously assigned to a courier") 
 		http.Error(w, "Order has not been previously assigned to a courier", http.StatusConflict)
 		return
 	}
 
 	if order.CourierEmail == request.Email {
-		log.Println("Courier already assigned to this order") 
 		http.Error(w, "This courier is already assigned to the order", http.StatusConflict)
 		return
 	}
@@ -878,23 +860,17 @@ func ReassignCourierToOrder(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	log.Printf("Update filter: %+v", filter)
-	log.Printf("Update document: %+v", update)
-
 	result, err := orderCollection.UpdateOne(context.TODO(), filter, update)
 	if err != nil {
-		log.Printf("Failed to update order: %v", err)
 		http.Error(w, "Failed to reassign courier to order", http.StatusInternalServerError)
 		return
 	}
 
 	if result.MatchedCount == 0 {
-		log.Printf("No matching order found for reassignment")
 		http.Error(w, "Order not found or no changes made", http.StatusConflict)
 		return
 	}
 
-	log.Println("Successfully reassigned order.")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode("Order reassigned successfully, pending courier acceptance")
 }
